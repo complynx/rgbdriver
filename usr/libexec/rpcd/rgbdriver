@@ -3,6 +3,10 @@
 # include the Onion sh lib
 . /usr/lib/onion/lib.sh
 
+state_file=/tmp/rgbstate
+default_start_color=ffffff
+default_duration=0.2
+
 
 get_status () {
     eval "`rgbdriver status | sed "s/:\\s/=/g"`"
@@ -12,26 +16,133 @@ get_status () {
 
     if [[ "$Main" == "off" ]]; then
         Main_val=0
+        Main_bool=false
     else
         Main_val=255
+        Main_bool=true
     fi
-    status_json='{ "color": '"$Color_dec"', "main": '"$Main_val"', "transition": '"$Transition"', "time": '"$Time"', "position": '"$Position"', "target": '"$Target_dec"'}'
+    seconds=`echo "$Time" | awk '{printf "%d\n", ($1 - $1%1)}'`
+    useconds=`echo "$Time" | awk '{printf "%d\n", ($1%1)*1000000}'`
+    uposition=`echo "$Position" | awk '{printf "%d\n", ($1*1000000)}'`
+
+    status_json='{ "color": '"$Color_dec"', "main": '"$Main_bool"', "transition": '"$Transition"', "seconds": '"$seconds"', "useconds": '"$useconds"', "position": '"$uposition"', "target": '"$Target_dec"'}'
 }
 
 DecToHex () {
     printf "%x\n" $1
 }
 
+set_rgbdriver () {
+    local type
+    local v
+    local ncol
+    local usec
+    local sec
+    local ntrans
+
+    json_get_type type main
+    if [[ "$type" != "" ]]; then
+        json_get_var v main
+        rgbdriver main "$v"
+    fi
+
+    json_get_type type color
+    if [[ "$type" == "int" ]]; then
+        json_get_var ncol color
+
+        json_get_type type transition
+        if [[ "$type" == "int" ]]; then
+            json_get_var ntrans transition
+        else
+            ntrans=1
+        fi
+
+        v=0 # has-any-timestamp flag
+        json_get_type type "useconds"
+        if [[ "$type" == "int" ]]; then
+            json_get_var usec "useconds"
+            v=1
+        else
+            usec=0
+        fi
+
+        json_get_type type "seconds"
+        if [[ "$type" == "int" ]]; then
+            json_get_var sec "seconds"
+            v=1
+        else
+            sec=0
+        fi
+
+        if [[ "$v" -eq 1 ]]; then
+            sec=`echo "$sec" "$usec" | awk '{printf "%f\n", ($1+($2/1000000.))}'`
+        else
+            sec="$default_duration"
+        fi
+
+        rgbdriver $( DecToHex "$ncol" ) "$sec" "$ntrans"
+    fi
+}
+
+togglergb () {
+    local col
+
+    if [[ "$Color_dec" -eq 0 ]]; then
+        if [[ -f "$state_file" ]]; then
+            col=`cat "$state_file"`
+        else
+            col="$default_start_color"
+        fi
+    else
+        echo "$Color">"$state_file"
+        col=0
+    fi
+
+    rgbdriver "$col" "$default_duration"
+}
 
 case "$1" in
     list)
-        echo '{"status": {}}'
+        echo '{"status": {}, "restart": {}, "togglemain": {}, "togglergb": {}, "set": {"main": true, "color": 32, "transition": 32, "seconds": 32, "useconds": 32}}'
     ;;
     call)
         case "$2" in
             status)
                 get_status
-                echo "$status_json"
+                echo "{\"status\": $status_json}"
+            ;;
+            restart)
+                rgbdriver restart
+                get_status
+                echo "{\"status\": $status_json}"
+            ;;
+            togglemain)
+                get_status
+                os="$status_json"
+                rgbdriver main
+                get_status
+                echo "{\"old_status\": $os, \"status\": $status_json}"
+            ;;
+            togglergb)
+                get_status
+                os="$status_json"
+
+                togglergb
+
+                get_status
+                echo "{\"old_status\": $os, \"status\": $status_json}"
+            ;;
+            set)
+                get_status
+                os="$status_json"
+
+                read input
+                json_load "$input"
+
+                set_rgbdriver
+
+                get_status
+                echo "{\"old_status\": $os, \"status\": $status_json}"
             ;;
         esac
     ;;

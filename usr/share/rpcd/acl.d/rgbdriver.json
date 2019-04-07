@@ -1,0 +1,15 @@
+{
+        "rgb": {
+                "description": "RGB access role",
+                "read": {
+                        "ubus": {
+                                "rgbdriver": [ "*" ]
+                        }
+                },
+                "write": {
+                        "ubus": {
+                                "rgbdriver": [ "*" ]
+                        }
+                }
+        }
+}
