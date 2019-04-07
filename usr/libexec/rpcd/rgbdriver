@@ -1,0 +1,38 @@
+#!/bin/sh
+
+# include the Onion sh lib
+. /usr/lib/onion/lib.sh
+
+
+get_status () {
+    eval "`rgbdriver status | sed "s/:\\s/=/g"`"
+
+    Color_dec=$( HexToDec $Color )
+    Target_dec=$( HexToDec $Target )
+
+    if [[ "$Main" == "off" ]]; then
+        Main_val=0
+    else
+        Main_val=255
+    fi
+    status_json='{ "color": '"$Color_dec"', "main": '"$Main_val"', "transition": '"$Transition"', "time": '"$Time"', "position": '"$Position"', "target": '"$Target_dec"'}'
+}
+
+DecToHex () {
+    printf "%x\n" $1
+}
+
+
+case "$1" in
+    list)
+        echo '{"status": {}}'
+    ;;
+    call)
+        case "$2" in
+            status)
+                get_status
+                echo "$status_json"
+            ;;
+        esac
+    ;;
+esac
