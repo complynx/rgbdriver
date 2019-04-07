@@ -1,0 +1,66 @@
+#!/bin/sh
+
+MYPATH="$(dirname $(realpath $0))"
+source "$MYPATH/dockermake_conf"
+
+#----------------------------------------------
+
+MYPATH_VM="$VM_PATH${MYPATH:${#HOST_PATH}}"
+
+GETVAR='{ print substr($4, 0, length($4)-1); }'
+
+
+echo " --- STAGE 1 ---"
+
+if ! vboxmanage list runningvms|grep ^\"$MACHINE\" >/dev/null; then
+	echo starting vm
+	vboxmanage startvm $MACHINE >/dev/null
+	sleep 5
+fi
+echo vm is started
+
+if vboxmanage guestproperty enumerate $MACHINE|grep " reachable_ip,">/dev/null; then
+	reachable_ip=`vboxmanage guestproperty enumerate $MACHINE|grep " reachable_ip,"|awk "$GETVAR"`
+	echo found reachable_ip = $reachable_ip testing it
+	if ! ping -n 1 -w 5 $reachable_ip >/dev/null; then
+		echo $reachable_ip is not reachable, deleting reachable_ip and network_started
+		vboxmanage guestproperty delete $MACHINE reachable_ip
+		vboxmanage guestproperty delete $MACHINE network_started
+	fi
+fi
+
+until vboxmanage guestproperty enumerate $MACHINE|grep " network_started,">/dev/null; do
+	echo waiting networks...
+	vboxmanage guestproperty wait DockerRails network_started
+done
+echo have networks
+
+if ! vboxmanage guestproperty enumerate $MACHINE|grep " reachable_ip,">/dev/null; then
+	for ip in `vboxmanage guestproperty enumerate $MACHINE|grep /V4/IP,|awk "$GETVAR"`; do
+		echo testing ip $ip
+		if ping -n 1 -w 5 $ip > /dev/null; then
+			reaching_ip=$ip
+			vboxmanage guestproperty set $MACHINE reachable_ip $ip --flags TRANSIENT,TRANSRESET
+		fi
+	done
+fi
+reachable_ip=`vboxmanage guestproperty enumerate $MACHINE|grep " reachable_ip,"|awk "$GETVAR"`
+echo using $reachable_ip to connect
+
+if ! ssh $USER@$reachable_ip "$MYPATH_VM/$STAGE2" "$@"; then
+	echo Stage 2 failed>&2
+	exit 1
+fi
+
+if [ "$1" == "clean" ]; then
+	exit 0;
+fi
+
+if ssh "$OMEGA_USER@$OMEGA_ADDR" echo >/dev/null; then
+	OMEGA_ADDR="$OMEGA_ADDR" \
+	OMEGA_USER="$OMEGA_USER" \
+	OMEGA_DEPLOY_PATH="$OMEGA_DEPLOY_PATH" \
+	make deploy
+fi
+
+

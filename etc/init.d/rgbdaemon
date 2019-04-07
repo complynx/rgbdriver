@@ -1,0 +1,15 @@
+#!/bin/sh /etc/rc.common
+
+START=51
+STOP=00
+
+
+start(){
+	rgbdriver
+}
+restart(){
+	rgbdriver restart
+}
+stop(){
+	rgbdriver stop
+}

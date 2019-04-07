@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+
+MYPATH="$(dirname $(realpath $0))"
+source "$MYPATH/dockermake_conf"
+
+#----------------------------------------------
+
+echo " --- STAGE 2 ---"
+
+MYPATH_DOCKER="$DOCKER_PATH${MYPATH:${#VM_PATH}}"
+
+echo searching containers for image $IMAGE
+container=`docker ps -qf ancestor=$IMAGE`
+if [ "$container" == "" ]; then
+    echo container is not running
+    container=`docker ps -qaf ancestor=$IMAGE`
+    if [ "$container" == "" ]; then
+        echo no container for the image $IMAGE created, please start one manually
+        exit 1
+    else
+        echo restarting the container $container
+        docker start $container
+    fi
+fi
+
+container=`docker ps -qf ancestor=$IMAGE`
+if [ "$container" == "" ]; then
+    echo container is not running, "something's wrong"
+    exit 1
+fi
+echo using container $container
+
+if ! docker exec $container "$MYPATH_DOCKER/$STAGE3" "$@"; then
+    echo Stage 3 failed>&2
+    exit 1
+fi

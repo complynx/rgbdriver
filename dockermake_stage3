@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+echo " --- STAGE 3 ---"
+
+cd "$(dirname $0)"
+
+if ! make "$@"; then
+	echo Make failed>&2
+	exit 1
+fi
