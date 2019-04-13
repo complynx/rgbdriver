@@ -50,7 +50,7 @@ noexistent = b"n\x0E\x15\x7Ent"
 null_address = b"\x00\x00\x00\x00\x00\x00"
 
 # 02 04 = request set_color => 03 02 = response status
-buf = myself + b"\x02\x04" + omega + b"\xff\xff\xff"
+# buf = myself + b"\x02\x04" + omega + b"\xff\xff\xff"
 # 02 05 = request switch_main_light => 03 02 = response status
 # buf = myself + b"\x02\x05" + omega
 # 02 05 = request switch_main_light [zero address] => [ignored]
@@ -62,7 +62,7 @@ buf = myself + b"\x02\x04" + omega + b"\xff\xff\xff"
 # 02 03 = request enable_main_light [wrong params] => fe 03 = error bad_request
 # buf = myself + b"\x02\x03" + omega
 # 01 02 = discovery with_status [discovery does not need device name, hence 6×00] => 03 02 = response status
-# buf = myself + b"\x01\x02" + null_address
+buf = myself + b"\x01\x02" + null_address
 # 01 02 = discovery with_status [wrong address] => [ignored]
 # buf = myself + b"\x01\x02" + noexistent
 # 43 02 = wrong 02 [wrong query type, right address] => fe 01 = error wrong_query_type
@@ -72,9 +72,13 @@ buf = myself + b"\x02\x04" + omega + b"\xff\xff\xff"
 # 02 43 = request wrong [wrong command, right address] => fe 02 = error wrong_command
 # buf = myself + b"\x02\x43" + omega
 
+
 crc = socket.htonl(zlib.crc32(buf, 0xCA7ADDED))
 # print(crc.to_bytes(4,'little'))
 buf += crc.to_bytes(4,'little')
 
 sendall(buf, PORT)
 
+# buf = b'\xa4l\xf1[\xed\xde\x01\x02\x00\x00\x00\x00\x00\x00' # \x08\xf1\x88l
+# buf += socket.htonl(zlib.crc32(buf, 0xCA7ADDED)).to_bytes(4,'little')
+# print(buf)

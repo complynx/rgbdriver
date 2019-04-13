@@ -9,6 +9,5 @@ VM_PATH=/media/sf_complynx
 DOCKER_PATH=/complynx
 
 OMEGA_ADDR=omega-87db.local
-OMEGA_ADDR=192.168.3.1
 OMEGA_USER=root
 OMEGA_DEPLOY_PATH="/usr/"

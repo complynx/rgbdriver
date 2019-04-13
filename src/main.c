@@ -32,6 +32,7 @@
 struct sigaction act;
 char* addr_if_name = "apcli0", *program_name;
 uint_fast8_t has_info, previous_main_light=0;
+int not_detached = 0;
 int semid;
 shm_struct *shm;
 struct timeval transit_start, transit_end;
@@ -385,6 +386,10 @@ void parseQuery(char* buf, int *len){
 
     if(checkQuery(buf, len)==0){ // if query is wrong, ignore it at all, it might be just a sniffer or anything unrelated
         *len = 0;
+
+        if(not_detached){
+            printf("%d checkQuery(buf, len)==0\n", __LINE__);
+        }
         return;
     }
     memcpy(sender_id, buf, 6);
@@ -403,6 +408,9 @@ void parseQuery(char* buf, int *len){
         // request has to be specifically for this device
         if(!cmp_id(buf+8)){
             *len=0; // ignore if not for us
+            if(not_detached){
+                printf("%d !cmp_id(buf+8)\n", __LINE__);
+            }
             return;
         }
         break;
@@ -413,6 +421,9 @@ void parseQuery(char* buf, int *len){
     default:
         if(!cmp_id(buf+8)){
             *len=0; // ignore if not for us
+            if(not_detached){
+                printf("%d !cmp_id(buf+8)\n", __LINE__);
+            }
             return;
         }
         makeBadQueryResponse(buf, len, sender_id, QUERY_ERROR_WRONG_TYPE, NULL, 0);
@@ -501,7 +512,7 @@ void parseQuery(char* buf, int *len){
 }
 
 void *udp_listener(void *vargp){
-    int s;
+    int s, i;
     struct sockaddr_in si_listen, si_remote;
     int struct_len, recv_len;
     char buf[UDP_PACKET_LENGTH_MAX];
@@ -537,10 +548,25 @@ void *udp_listener(void *vargp){
         }else{
 
             //print details of the client/peer and the data received
-            //printf("Received packet from %s:%d\n", inet_ntoa(si_other.sin_addr), ntohs(si_other.sin_port));
-            //printf("Data: %s\n" , buf);
+            if(not_detached){
+                printf("Received packet from %s:%d\n", inet_ntoa(si_remote.sin_addr), ntohs(si_remote.sin_port));
+                for(i=0;i<recv_len; ++i) printf("%02x ", buf[i] & 0xff);
+                printf("\n");
+            }
 
             parseQuery(buf, &recv_len);
+
+            if(not_detached){
+                if(recv_len > 0){
+                    printf("Replying with packet\n");
+                    for(i=0;i<recv_len; ++i) printf("%02x ", buf[i] & 0xff);
+                    printf("\n");
+                }else{
+                    printf("Skipping\n");
+                }
+            }
+            // Reply has to be on the server port instead of sender's one.
+            si_remote.sin_port = htons(UDP_SERVER_PORT);
 
             //now reply the client with the same data
             if(recv_len > 0){
@@ -872,6 +898,7 @@ int main(int argc, char** argv) {
     }
 
     if(argc>1 && !strcmp(argv[1], "no-detach")){
+        not_detached = 1;
         return server();
     }
 
