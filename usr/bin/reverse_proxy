@@ -1,0 +1,26 @@
+#!/bin/sh
+
+sig_exit=0
+on_signal () {
+	sig_exit=1
+	kill $child_pid
+}
+ignore () {
+	echo ignoring
+}
+
+trap 'on_signal' 2 3 6 9 14 15
+trap 'ignore' 1
+
+sleep 60 &
+child_pid=$!
+wait $child_pid
+# echo $$> /tmp/reverse_proxy_pid
+
+while [[ $sig_exit -eq 0 ]]; do
+	ssh -T -R 7651:127.0.0.1:80 -i /root/.ssh/id_dropbear proxyuser@complynx.net -K 300 1>/dev/null</dev/zero&
+	child_pid=$!
+	wait $child_pid
+done
+
+

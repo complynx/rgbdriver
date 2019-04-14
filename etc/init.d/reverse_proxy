@@ -1,0 +1,19 @@
+#!/bin/sh /etc/rc.common
+# Example script
+# Copyright (C) 2007 OpenWrt.org
+ 
+START=80
+STOP=00
+PID_FILE=/tmp/reverse_proxy_pid
+
+start() {
+    reverse_proxy &
+    prpid=$!
+    echo $prpid>$PID_FILE
+}
+ 
+stop() {
+    prpid=`cat $PID_FILE`
+    kill $prpid
+    rm -rf $PID_FILE
+}
