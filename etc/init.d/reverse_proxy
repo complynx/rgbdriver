@@ -17,3 +17,9 @@ stop() {
     kill $prpid
     rm -rf $PID_FILE
 }
+
+boot() {
+    reverse_proxy with-sleep &
+    prpid=$!
+    echo $prpid>$PID_FILE
+}

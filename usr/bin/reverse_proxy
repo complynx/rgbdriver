@@ -3,7 +3,7 @@
 sig_exit=0
 on_signal () {
 	sig_exit=1
-	kill $child_pid
+	kill -9 $child_pid
 }
 ignore () {
 	echo ignoring
@@ -12,13 +12,15 @@ ignore () {
 trap 'on_signal' 2 3 6 9 14 15
 trap 'ignore' 1
 
-sleep 60 &
-child_pid=$!
-wait $child_pid
+if [[ "$1" == "with-sleep" ]]; then
+	sleep 60 &
+	child_pid=$!
+	wait $child_pid
+fi
 # echo $$> /tmp/reverse_proxy_pid
 
 while [[ $sig_exit -eq 0 ]]; do
-	ssh -T -R 7651:127.0.0.1:80 -i /root/.ssh/id_dropbear proxyuser@complynx.net -K 300 1>/dev/null</dev/zero&
+	ssh -T -N -R 7651:127.0.0.1:80 -i /root/.ssh/id_dropbear_l proxyuser@complynx.net -K 900 >/dev/null</dev/zero&
 	child_pid=$!
 	wait $child_pid
 done
