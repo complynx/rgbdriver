@@ -1,27 +1,30 @@
-#include <stdio.h>
-#include <unistd.h>
-#include <pcadriver.h>
+#include <arpa/inet.h>
 #include <color2duty.h>
-#include <sys/time.h>
-#include <sys/types.h>
+#include <float.h>
+#include <json-c/json.h>
+#include <linux/if.h>
+#include <math.h>
+#include <pcadriver.h>
+#include <pthread.h>
+#include <signal.h>
+#include <stdio.h>
+#include <sys/ioctl.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
-#include <signal.h>
-#include <float.h>
-#include <math.h>
-#include <sys/ioctl.h>
-#include <pthread.h>
-#include "shm_server.h"
-#include<arpa/inet.h>
-#include<sys/socket.h>
-#include <linux/if.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
 #include <zlib.h>
-#include <arpa/inet.h>
+
+#include "shm_server.h"
 
 #define NICENESS        -5
 #define RATE_USEC       1000000/60
 #define DRV_FREQ        500.
 #define DRV_ADDR        0x40
+
+#define ERROR_START_LEN 256
 
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
@@ -770,11 +773,167 @@ int server_fork(){
     return server();
 }
 
+struct json_object* json_err_from_error_msg(const char*error_msg, ...) {
+	char dest[ERROR_START_LEN],*dest1=dest;
+	struct json_object *ret;
+	int len;
+	va_list argptr;
+	va_start(argptr, error_msg);
+	len=vsnprintf(dest1, ERROR_START_LEN, error_msg, argptr);
+	if(len>=ERROR_START_LEN) {
+		dest1 = (char*)malloc(len+1);
+		len=vsnprintf(dest1, len+1, error_msg, argptr);
+	}
+	va_end(argptr);
+
+	ret = json_object_new_object();
+	json_object_object_add(ret, "error", json_object_new_string(dest1));
+
+	if(dest1!=dest){
+		free(dest1);
+	}
+	return ret;
+}
+
+int main_str_parse(const char* str){
+	if(!strcasecmp(str, "on") ||
+			!strcasecmp(str, "1") ||
+			!strcasecmp(str, "255") ||
+			!strcasecmp(str, "true")){
+		return 255;
+	}
+	if(!strcasecmp(str, "toggle")) return 255 - shm->main_light;
+	return 0;
+}
+
+int32_t parse_json_color(struct json_object *cstr){
+	const char*s;
+	char *r;
+	int32_t color=-1;
+	if(json_object_is_type(cstr, json_type_int)){
+		color = json_object_get_int(cstr);
+	}else{
+		s = json_object_get_string(cstr);
+
+		if(*s == '#') ++s;
+		color = strtol(s, &r, 16);
+		if(r==s) {
+			return -1;
+		}
+	}
+    if(color<0) return 0;
+    if(color> 0xffffff) return 0xfffffff;
+    return color;
+}
+
+struct json_object* client_json_process(struct json_object *obj) {
+	struct json_object *ret=NULL, *ml=NULL, *param=NULL;
+	const char* jstr;
+	int changes = 0, A;
+	int32_t color;
+    double seconds;
+
+	if(!json_object_is_type(obj, json_type_object)){
+		return json_err_from_error_msg("root is not JSON object type");
+	}
+
+	if(json_object_object_get_ex(obj, "main", &ml) && ml != NULL) {
+		if(json_object_is_type(ml, json_type_int)) {
+			A=json_object_get_int(ml);
+			shm->main_light = A>127?255:0;
+		}else{
+			jstr=json_object_get_string(ml);
+			shm->main_light = main_str_parse(jstr);
+		}
+		changes = 1;
+	}
+
+	ml=NULL;
+	if(json_object_object_get_ex(obj, "rgb", &ml) && ml != NULL) {
+		A=0;
+		seconds=0.2;
+		if(!json_object_is_type(ml, json_type_object)){
+			color = parse_json_color(ml);
+		}else{
+			json_object_object_get_ex(ml, "color", &param);
+			color = parse_json_color(param);
+
+			param = NULL;
+			if(json_object_object_get_ex(ml, "transition", &param) &&
+					param != NULL) {
+				A=json_object_get_int(param);
+			}
+
+			param = NULL;
+			if(json_object_object_get_ex(ml, "time", &param) &&
+					param != NULL) {
+				seconds=json_object_get_double(param);
+			}
+		}
+		if(color<0) {
+			return json_err_from_error_msg("color parameter is not a color");
+		}
+		changes = 1;
+
+        COLOR2RGB(*shm, color);
+        shm->time = seconds;
+        shm->transition = A;
+        shm->position = 0;
+        shm->reset_start_color = 1;
+	}
+
+	ret=json_object_new_object();
+
+    json_object_object_add(ret, "color",
+    		json_object_new_int(duty_rgbw2color(&shm->current_duty)));
+    json_object_object_add(ret, "main",
+    		json_object_new_int(shm->main_light));
+    json_object_object_add(ret, "transition",
+    		json_object_new_int(shm->transition));
+    json_object_object_add(ret, "time",
+    		json_object_new_double(shm->time));
+    json_object_object_add(ret, "position",
+    		json_object_new_double(shm->position));
+    json_object_object_add(ret, "target", json_object_new_int(RGB2COLOR(*shm)));
+
+	if(changes){
+		if(kill(shm->pid, SIGUSR1)!=0){
+			return json_err_from_error_msg("failed to initiate transition: %s",
+					strerror(errno));
+		}
+	}
+
+	return ret;
+}
+
+
+int client_json(char *json_string) {
+	struct json_tokener *tok=json_tokener_new();
+	struct json_object *obj, *ret=NULL;
+	obj = json_tokener_parse_ex(tok, json_string, strlen(json_string));
+	if(json_tokener_get_error(tok) == json_tokener_success){
+		ret = client_json_process(obj);
+	}else{
+		ret = json_err_from_error_msg("couldn't parse JSON string: %s\n",
+				json_tokener_error_desc(json_tokener_get_error(tok)));
+	}
+	if(ret!=NULL) {
+		printf("%s\n", json_object_to_json_string_ext(ret,
+				JSON_C_TO_STRING_PLAIN));
+	}
+
+	return 0;
+}
+
 int client(int argc, char** argv){
     uint32_t color = 0, main = 0;
     double seconds = 0;
     char* cols;
     init_shm(0);
+
+    if(argv[1][0] == 'j') {
+    	return client_json(argv[2]);
+    }
 
     if(argv[1][0] == 's'){
         color = duty_rgbw2color(&shm->current_duty);

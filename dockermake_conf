@@ -5,7 +5,7 @@ STAGE3=dockermake_stage3
 IMAGE=compiled
 
 # ./Projects/pcadriver
-HOST_PATH=/d/Users/complynx
+HOST_PATH=/c/Users/compl/Projects/in_docker
 VM_PATH=/media/sf_complynx
 DOCKER_PATH=/complynx
 

@@ -29,9 +29,9 @@ if vboxmanage guestproperty enumerate $MACHINE|grep " reachable_ip,">/dev/null; 
 	fi
 fi
 
-until vboxmanage guestproperty enumerate $MACHINE|grep " network_started,">/dev/null; do
+until vboxmanage guestproperty enumerate $MACHINE|grep " network_started,">/dev/null || vboxmanage guestproperty enumerate DockerRails --patterns "*Net*Status*"|grep " Up,">/dev/null; do
 	echo waiting networks...
-	vboxmanage guestproperty wait DockerRails network_started
+	vboxmanage guestproperty wait $MACHINE network_started --timeout 60000
 done
 echo have networks
 
@@ -57,10 +57,12 @@ if [ "$1" == "clean" ]; then
 fi
 
 if ssh "$OMEGA_USER@$OMEGA_ADDR" echo >/dev/null; then
-	OMEGA_ADDR="$OMEGA_ADDR" \
-	OMEGA_USER="$OMEGA_USER" \
-	OMEGA_DEPLOY_PATH="$OMEGA_DEPLOY_PATH" \
-	make deploy
+	export OMEGA_ADDR="$OMEGA_ADDR"
+	export OMEGA_USER="$OMEGA_USER"
+	export OMEGA_DEPLOY_PATH="$OMEGA_DEPLOY_PATH"
+	echo " Deploying to $OMEGA_USER@$OMEGA_ADDR:$OMEGA_DEPLOY_PATH"
+	rsync -rlptDvhe ssh --chmod=+x bin/* "$OMEGA_USER@$OMEGA_ADDR:$OMEGA_DEPLOY_PATH/bin/"
+	rsync -rlptDvhe ssh lib/* "$OMEGA_USER@$OMEGA_ADDR:$OMEGA_DEPLOY_PATH/lib/"
 fi
 
 

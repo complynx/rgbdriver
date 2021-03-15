@@ -40,15 +40,20 @@ LIB_PCA := lib$(LIB_PCA_NAME).so
 APP0 := rgbdriver
 SOURCE_APP0 := $(SRCDIR)/main.$(SRCEXT)
 OBJECT_APP0 := $(patsubst $(SRCDIR)/%,$(BUILDDIR)/%,$(SOURCE_APP0:.$(SRCEXT)=.o))
-LIB_APP0 := -lpcadriver -lfasti2c -lcolor2duty -lm -pthread -lz
+LIB_APP0 := -lpcadriver -lfasti2c -lcolor2duty -lm -pthread -lz -ljson-c
 TARGET_APP0 := $(APP0)
 
+APP1 := yeelightd
+SOURCE_APP1 := $(SRCDIR)/yeelightd.$(SRCEXT)
+OBJECT_APP1 := $(patsubst $(SRCDIR)/%,$(BUILDDIR)/%,$(SOURCE_APP1:.$(SRCEXT)=.o))
+LIB_APP1 := -lm -pthread -lz -ljson-c
+TARGET_APP1 := $(APP1)
 
 
 
 
 TARGET_LIBS = $(LIB_FI2C) $(LIB_C2D) $(LIB_PCA)
-TARGET_APPS = $(TARGET_APP0)
+TARGET_APPS = $(TARGET_APP0) $(TARGET_APP1)
 LDFLAGS += -L$(LIBDIR)
 
 
@@ -139,6 +144,16 @@ $(TARGET_APP0): $(OBJECT_APP0) $(TARGET_LIBS)
 	$(CC) $^ $(CFLAGS) $(LDFLAGS) -o $(TARGET_APP0) $(LIB_APP0)
 	@cp $@ $(BINDIR)/
 
+$(TARGET_APP1): $(OBJECT_APP1) $(TARGET_LIBS)
+	@echo " Compiling $@"
+	@mkdir -p $(BINDIR)
+	@STAGING_DIR=$(BUILDROOT_PATH)/$(STAGING_DIR_RELATIVE) \
+	$(CC) $^ $(CFLAGS) $(LDFLAGS) -o $(TARGET_APP1) $(LIB_APP1)
+	@cp $@ $(BINDIR)/
+
+testdocker:
+	@echo "Docker test is ok and clean"
+
 deploy:
 	@echo " Deploying to $(OMEGA_USER)@$(OMEGA_ADDR):$(OMEGA_DEPLOY_PATH)"
 	rsync -rlptDvhe ssh --chmod=+x $(BINDIR)/* "$(OMEGA_USER)@$(OMEGA_ADDR):$(OMEGA_DEPLOY_PATH)/$(BINDIR)/"
@@ -148,4 +163,4 @@ clean:
 	@echo " Cleaning..."
 	@rm -rf $(BUILDDIR) $(BINDIR) $(LIBDIR)
 
-.PHONY: clean deploy
+.PHONY: clean deploy testdocker
