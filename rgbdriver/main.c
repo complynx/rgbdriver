@@ -932,7 +932,12 @@ int client(int argc, char** argv){
     init_shm(0);
 
     if(argv[1][0] == 'j') {
-    	return client_json(argv[2]);
+        return client_json(argv[2]);
+    }
+
+    if(argv[1][0] == 'v') {
+        printf("Version 1.1 (cmake)\n");
+        return 0;
     }
 
     if(argv[1][0] == 's'){

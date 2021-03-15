@@ -2,6 +2,7 @@
 
 MYPATH="$(dirname $(realpath $0))"
 source "$MYPATH/dockermake_conf"
+BUILD_DIR="$MYPATH/build"
 
 #----------------------------------------------
 
@@ -11,6 +12,8 @@ GETVAR='{ print substr($4, 0, length($4)-1); }'
 
 
 echo " --- STAGE 1 ---"
+
+makedir -p "$BUILD_DIR"
 
 if ! vboxmanage list runningvms|grep ^\"$MACHINE\" >/dev/null; then
 	echo starting vm
@@ -57,12 +60,9 @@ if [ "$1" == "clean" ]; then
 fi
 
 if ssh "$OMEGA_USER@$OMEGA_ADDR" echo >/dev/null; then
-	export OMEGA_ADDR="$OMEGA_ADDR"
-	export OMEGA_USER="$OMEGA_USER"
-	export OMEGA_DEPLOY_PATH="$OMEGA_DEPLOY_PATH"
 	echo " Deploying to $OMEGA_USER@$OMEGA_ADDR:$OMEGA_DEPLOY_PATH"
-	rsync -rlptDvhe ssh --chmod=+x bin/* "$OMEGA_USER@$OMEGA_ADDR:$OMEGA_DEPLOY_PATH/bin/"
-	rsync -rlptDvhe ssh lib/* "$OMEGA_USER@$OMEGA_ADDR:$OMEGA_DEPLOY_PATH/lib/"
+	rsync -rlptDvhe ssh --chmod=+x "$BUILD_DIR"/bin/* "$OMEGA_USER@$OMEGA_ADDR:$OMEGA_DEPLOY_PATH/bin/"
+	rsync -rlptDvhe ssh "$BUILD_DIR"/lib/* "$OMEGA_USER@$OMEGA_ADDR:$OMEGA_DEPLOY_PATH/lib/"
 fi
 
 

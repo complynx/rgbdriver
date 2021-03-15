@@ -1,8 +1,17 @@
 #!/usr/bin/env bash
 
+MYPATH="$(dirname $(realpath $0))"
+source "$MYPATH/dockermake_conf"
+BUILD_DIR="$MYPATH/build"
+
 echo " --- STAGE 3 ---"
 
-cd "$(dirname $0)"
+cd "$BUILD_DIR"
+
+if ! cmake .. -DCMAKE_TOOLCHAIN_FILE="$DOCKER_PATH/$TOOLCHAIN_CONF"; then
+	echo CMake failed>&2
+	exit 1
+fi
 
 if ! make "$@"; then
 	echo Make failed>&2

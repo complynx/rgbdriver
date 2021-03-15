@@ -8,6 +8,7 @@ IMAGE=compiled
 HOST_PATH=/c/Users/compl/Projects/in_docker
 VM_PATH=/media/sf_complynx
 DOCKER_PATH=/complynx
+TOOLCHAIN_CONF=staging_dir/toolchain.cmake
 
 OMEGA_ADDR=omega-87db.local
 OMEGA_USER=root
