@@ -1,7 +1,7 @@
 /*
  * shm_server.h
  *
- *  Created on: 21 мая 2018 г.
+ *  Created on: 21 пїЅпїЅпїЅ 2018 пїЅ.
  *      Author: complynx
  */
 
@@ -19,7 +19,10 @@
 
 #define IPC_SHM_KEY     7867
 #define UDP_SERVER_PORT 7867
+#define TCP_SERVER_PORT 7868
 #define UDP_PACKET_LENGTH_MAX 256
+#define RECV_TIMEOUT_SEC 5
+#define TCP_LISTEN_CONNECTIONS 10
 
 #define QUERY_TYPE_DISCOVERY 0x01
 #define QUERY_TYPE_REQUEST 0x02

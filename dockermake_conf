@@ -9,6 +9,7 @@ HOST_PATH=/c/Users/compl/Projects/in_docker
 VM_PATH=/media/sf_complynx
 DOCKER_PATH=/complynx
 TOOLCHAIN_CONF=staging_dir/toolchain.cmake
+STAGING_DIR_C=/root/source/staging_dir
 
 OMEGA_ADDR=omega-87db.local
 OMEGA_USER=root

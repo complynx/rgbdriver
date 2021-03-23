@@ -105,6 +105,99 @@ void color2rgbw(color_RGBW* rgbw,uint32_t color){
 #endif
 }
 
+void rgb2hsv(color_RGB*in, color_HSV*out)
+{
+	if(in == NULL || out == NULL) return;
+    uint8_t min, max, delta;
+
+    min = min3(in->r,in->g,in->b);
+    max = max3(in->r,in->g,in->b);
+
+    out->v = ((double)max)/255.; // v
+    delta = max - min;
+    if (delta == 0) {
+        out->s = 0;
+        out->h = HUE_UNDEFINED;
+        return;
+    }
+    if( max > 0 ) { // NOTE: if Max is == 0, this divide would cause a crash
+        out->s = ((double)delta / (double)max); // s
+    } else {
+        // if max is 0, then r = g = b = 0
+        out->s = 0;
+        out->h = HUE_UNDEFINED;
+        return;
+    }
+    if( in->r == max )
+        out->h = ((double)( in->g - in->b )) / (double)delta; // between yellow & magenta
+    else
+    if( in->g == max )
+        out->h = 2.0 + ((double)( in->b - in->r )) / (double)delta;  // between cyan & yellow
+    else
+        out->h = 4.0 + ((double)( in->r - in->g )) / (double)delta;  // between magenta & cyan
+
+    out->h *= 60.0;                              // to degrees
+
+    if( out->h < 0.0 )
+        out->h += 360.0; // rollover
+}
+
+void hsv2rgb(color_HSV*in, color_RGB*out)
+{
+	if(in == NULL || out == NULL) return;
+    double      hh, p, q, t, ff;
+    long        i;
+
+    if(in->s <= 0.0) {       // < is wrong, yet for compiler
+        out->r = in->v*(255); // grey
+        out->g = in->v*(255);
+        out->b = in->v*(255);
+        return;
+    }
+    hh = in->h;
+    if(hh >= 360.0) hh = 0.0;
+    hh /= 60.0;
+    i = (long)hh;
+    ff = hh - i;
+    p = in->v * (1.0 - in->s);
+    q = in->v * (1.0 - (in->s * ff));
+    t = in->v * (1.0 - (in->s * (1.0 - ff)));
+
+    switch(i) {
+    case 0:
+        out->r = in->v*255;
+        out->g = t*255;
+        out->b = p*255;
+        break;
+    case 1:
+        out->r = q*255;
+        out->g = in->v*255;
+        out->b = p*255;
+        break;
+    case 2:
+        out->r = p*255;
+        out->g = in->v*255;
+        out->b = t*255;
+        break;
+    case 3:
+        out->r = p*255;
+        out->g = q*255;
+        out->b = in->v*255;
+        break;
+    case 4:
+        out->r = t*255;
+        out->g = p*255;
+        out->b = in->v*255;
+        break;
+    case 5:
+    default:
+        out->r = in->v*255;
+        out->g = p*255;
+        out->b = q*255;
+        break;
+    }
+}
+
 
 void color2duty_rgbw(duty_RGBW* rgbw,uint32_t color){
     color_RGBW c;

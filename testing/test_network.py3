@@ -6,16 +6,27 @@ import struct
 import time
 import netifaces
 import zlib
+import threading
 
 PORT = 7867
 
-def send(msg, port, addresses):
+def recv(sock):
+	while True:
+		data, addr = sock.recvfrom(1024)  # buffer size is 1024 bytes
+		print("received message:", data, " from ", addr)
+
+
+def send(msg, port, baddr, saddr):
 	sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 	sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 	sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-	sock.bind((addresses['addr'], PORT))
+	sock.bind((baddr, PORT))
 
-	sock.sendto(msg, (addresses['broadcast'], port))
+	t = threading.Thread(target=recv, args=(sock,))
+	t.daemon = True
+	t.start()
+
+	sock.sendto(msg, (saddr, port))
 
 def sendall(msg, port):
 	ifs = netifaces.interfaces()
@@ -27,10 +38,11 @@ def sendall(msg, port):
 			for if_addr in if_addrs[netifaces.AF_INET]:
 				# print(if_addr)
 				if if_addr['addr'].startswith('127.'):
-					continue
+					print(f"-- sending to {if_addr['addr']}-{if_addr['addr']}")
+					send(msg, port, if_addr['addr'], if_addr['addr'])
 				if 'broadcast' in if_addr:
-					print("-- sending to %s" % if_addr['broadcast'])
-					send(msg, port, if_addr)
+					print(f"-- sending to {if_addr['addr']}-{if_addr['broadcast']}")
+					send(msg, port, if_addr['addr'], if_addr['broadcast'])
 
 
 
@@ -78,6 +90,8 @@ crc = socket.htonl(zlib.crc32(buf, 0xCA7ADDED))
 buf += crc.to_bytes(4,'little')
 
 sendall(buf, PORT)
+
+time.sleep(3)
 
 # buf = b'\xa4l\xf1[\xed\xde\x01\x02\x00\x00\x00\x00\x00\x00' # \x08\xf1\x88l
 # buf += socket.htonl(zlib.crc32(buf, 0xCA7ADDED)).to_bytes(4,'little')

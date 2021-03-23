@@ -5,6 +5,7 @@ extern "C" {
 #endif
 
 #include <stdint.h>
+#include <stddef.h>
 
 typedef struct color_rgbw_{
     uint8_t r;
@@ -25,6 +26,17 @@ typedef struct color_rgb_{
     uint8_t g;
     uint8_t b;
 } color_RGB;
+
+typedef struct {
+    double h;       // angle in degrees
+    double s;       // a fraction between 0 and 1
+    double v;       // a fraction between 0 and 1
+} color_HSV;
+
+void rgb2hsv(color_RGB*in, color_HSV*out);
+void hsv2rgb(color_HSV*in, color_RGB*out);
+
+#define HUE_UNDEFINED -0.0000001
 
 #define COLOR2RGB(rgb, color) ((rgb).b=((color))&0xff,(rgb).g=((color)>>8)&0xff,(rgb).r=((color)>>16)&0xff)
 #define RGB2COLOR(rgb) ((uint32_t)((rgb).b & 0xff) + ((uint32_t)((rgb).g & 0xff) << 8) + ((uint32_t)((rgb).r & 0xff) << 16))

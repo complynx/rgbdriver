@@ -13,7 +13,7 @@ GETVAR='{ print substr($4, 0, length($4)-1); }'
 
 echo " --- STAGE 1 ---"
 
-makedir -p "$BUILD_DIR"
+mkdir -p "$BUILD_DIR"
 
 if ! vboxmanage list runningvms|grep ^\"$MACHINE\" >/dev/null; then
 	echo starting vm

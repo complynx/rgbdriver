@@ -1,5 +1,6 @@
 #!/bin/sh
 
+# RGBd_*CLX123 = $1$$PZtAUtuzRPadBsrOWBJMM0
 # include the Onion sh lib
 . /usr/lib/onion/lib.sh
 
@@ -43,7 +44,7 @@ set_rgbdriver () {
     json_get_type type main
     if [[ "$type" != "" ]]; then
         json_get_var v main
-        rgbdriver main "$v"
+        rgbdriver main "$v">/dev/null 2>&1
     fi
 
     json_get_type type color
@@ -80,7 +81,7 @@ set_rgbdriver () {
             sec="$default_duration"
         fi
 
-        rgbdriver $( DecToHex "$ncol" ) "$sec" "$ntrans"
+        rgbdriver $( DecToHex "$ncol" ) "$sec" "$ntrans">/dev/null 2>&1
     fi
 }
 
@@ -98,12 +99,12 @@ togglergb () {
         col=0
     fi
 
-    rgbdriver "$col" "$default_duration"
+    rgbdriver "$col" "$default_duration">/dev/null 2>&1
 }
 
 case "$1" in
     list)
-        echo '{"status": {}, "restart": {}, "togglemain": {}, "togglergb": {}, "set": {"main": true, "color": 32, "transition": 32, "seconds": 32, "useconds": 32}}'
+        echo '{"status": {}, "restart": {}, "toggle": {}, "togglemain": {}, "togglergb": {}, "set": {"main": true, "color": 32, "transition": 32, "seconds": 32, "useconds": 32}}'
     ;;
     call)
         case "$2" in
@@ -112,14 +113,22 @@ case "$1" in
                 echo "{\"status\": $status_json}"
             ;;
             restart)
-                rgbdriver restart
+                rgbdriver restart>/dev/null 2>&1
                 get_status
                 echo "{\"status\": $status_json}"
             ;;
             togglemain)
                 get_status
                 os="$status_json"
-                rgbdriver main
+                rgbdriver main>/dev/null 2>&1
+                get_status
+                echo "{\"old_status\": $os, \"status\": $status_json}"
+            ;;
+            toggle)
+                get_status
+                os="$status_json"
+                togglergb
+                rgbdriver main>/dev/null 2>&1
                 get_status
                 echo "{\"old_status\": $os, \"status\": $status_json}"
             ;;

@@ -20,7 +20,7 @@ fi
 # echo $$> /tmp/reverse_proxy_pid
 
 while [[ $sig_exit -eq 0 ]]; do
-	ssh -T -N -R 7651:127.0.0.1:80 -i /root/.ssh/id_dropbear_l proxyuser@complynx.net -K 900 >/dev/null</dev/zero&
+	ssh -T -N -R 7651:127.0.0.1:80 -i /root/.ssh/id_dropbear reverseproxy@complynx.net -K 900 >/dev/null</dev/zero&
 	child_pid=$!
 	wait $child_pid
 done

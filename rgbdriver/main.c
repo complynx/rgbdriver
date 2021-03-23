@@ -1,5 +1,6 @@
 #include <arpa/inet.h>
 #include <color2duty.h>
+#include <errno.h>
 #include <float.h>
 #include <json-c/json.h>
 #include <linux/if.h>
@@ -31,23 +32,30 @@
 #define CAT2(x,y) x##y
 #define CAT(x,y) CAT2(x,y)
 #define p_error(msg) fprintf(stderr, "%s(%d): %s (%s)\n", __FILE__, __LINE__, msg, strerror(errno))
+#define p_errorce(msg,sock) (fprintf(stderr, "%s(%d): %s (%s)\n", __FILE__, __LINE__, msg, strerror(errno)),close(sock),exit(-1))
+#define p_errorc(msg,sock) (fprintf(stderr, "%s(%d): %s (%s)\n", __FILE__, __LINE__, msg, strerror(errno)),close(sock))
 
 struct sigaction act;
 char* addr_if_name = "apcli0", *program_name;
 uint_fast8_t has_info, previous_main_light=0;
 int not_detached = 0;
 int semid;
+int tcp_socket=0;
 shm_struct *shm;
 struct timeval transit_start, transit_end;
 duty_RGBW c_start, c_end, c_now;
 PCADriver * drv;
 int shmid;
 sigset_t   set;
-pthread_t thread_id, root_id;
+pthread_t thread_id, root_id, tcp_thread_id;
 
 void signal_handle(int sig){
     if(sig == SIGUSR1) ++has_info;
     else ++shm->exit_flag;
+    if(shm->exit_flag>3){
+        if(not_detached) printf("forcing exit");
+        exit(-1);
+    }
 }
 
 #define clamp(x,m,M) (((x)>(M))?(M):((x)<(m))?(m):(x))
@@ -379,7 +387,7 @@ void makeDiscoveryResponse(char* buf, int *len, char *recipient, uint_fast8_t ty
     addQueryCrc(buf, len);
 }
 
-void parseQuery(char* buf, int *len){
+void parseQuery(char* buf, int *len, int noskip){
     uint32_t usec = 0, sec = 0, color;
     char *p;
     char sender_id[6];
@@ -388,7 +396,10 @@ void parseQuery(char* buf, int *len){
     int I, p_len;
 
     if(checkQuery(buf, len)==0){ // if query is wrong, ignore it at all, it might be just a sniffer or anything unrelated
-        *len = 0;
+        if(noskip){
+            makeBadQueryResponse(buf, len, get_hw_addr(), QUERY_ERROR_BAD_REQUEST, NULL, 0);
+        }
+        else *len = 0;
 
         if(not_detached){
             printf("%d checkQuery(buf, len)==0\n", __LINE__);
@@ -409,7 +420,7 @@ void parseQuery(char* buf, int *len){
         return;
     case QUERY_TYPE_REQUEST:
         // request has to be specifically for this device
-        if(!cmp_id(buf+8)){
+        if(!cmp_id(buf+8) && !noskip){
             *len=0; // ignore if not for us
             if(not_detached){
                 printf("%d !cmp_id(buf+8)\n", __LINE__);
@@ -419,10 +430,12 @@ void parseQuery(char* buf, int *len){
         break;
     case QUERY_TYPE_RESPONSE:
     case QUERY_TYPE_ERROR:
-        *len=0; // just ignore this
+        if(noskip) {
+            makeBadQueryResponse(buf, len, sender_id, QUERY_ERROR_WRONG_TYPE, NULL, 0);
+        } else *len=0; // just ignore this
         return;
     default:
-        if(!cmp_id(buf+8)){
+        if(!cmp_id(buf+8) && !noskip){
             *len=0; // ignore if not for us
             if(not_detached){
                 printf("%d !cmp_id(buf+8)\n", __LINE__);
@@ -487,7 +500,7 @@ void parseQuery(char* buf, int *len){
 
         shm->time = 0.0000001;
         shm->transition = 1;
-        shm->position = 0;
+        shm->position = 1;
         shm->reset_start_color = 1;
         pthread_kill(root_id, SIGUSR1);
         break;
@@ -514,12 +527,7 @@ void parseQuery(char* buf, int *len){
     addQueryCrc(buf, len);
 }
 
-void *udp_listener(void *vargp){
-    int s, i;
-    struct sockaddr_in si_listen, si_remote;
-    int struct_len, recv_len;
-    char buf[UDP_PACKET_LENGTH_MAX];
-
+void block_signals() {
     sigset_t set;
 
     sigemptyset(&set);
@@ -527,6 +535,17 @@ void *udp_listener(void *vargp){
     sigaddset(&set, SIGTERM);
     sigaddset(&set, SIGUSR1);
     pthread_sigmask(SIG_BLOCK, &set, NULL);
+
+}
+
+void *udp_listener(void *vargp){
+    int s, i;
+    struct sockaddr_in si_listen, si_remote;
+    int struct_len, recv_len;
+    char buf[UDP_PACKET_LENGTH_MAX];
+    struct timeval tv;
+
+    block_signals();
 
     if ((s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1) {
         p_error("socket");
@@ -538,16 +557,23 @@ void *udp_listener(void *vargp){
     si_listen.sin_port = htons(UDP_SERVER_PORT);
     si_listen.sin_addr.s_addr = htonl(INADDR_ANY);
 
+    tv.tv_sec = RECV_TIMEOUT_SEC;
+    tv.tv_usec = 0;
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
+
     if( bind(s, (struct sockaddr*)&si_listen, sizeof(si_listen) ) == -1) {
         p_error("bind");
         return NULL;
     }
+    if(not_detached) printf("started UDP server\n");
 
     while(!shm->exit_flag) {
         //try to receive some data, this is a blocking call
         struct_len = sizeof(si_remote);
         if ((recv_len = recvfrom(s, buf, UDP_PACKET_LENGTH_MAX, 0, (struct sockaddr *) &si_remote, &struct_len)) == -1) {
-            p_error("recvfrom()");
+            if (errno != EAGAIN && errno != EWOULDBLOCK){
+                p_error("recvfrom()");
+            }
         }else{
 
             //print details of the client/peer and the data received
@@ -557,7 +583,7 @@ void *udp_listener(void *vargp){
                 printf("\n");
             }
 
-            parseQuery(buf, &recv_len);
+            parseQuery(buf, &recv_len, 0);
 
             if(not_detached){
                 if(recv_len > 0){
@@ -569,7 +595,7 @@ void *udp_listener(void *vargp){
                 }
             }
             // Reply has to be on the server port instead of sender's one.
-            si_remote.sin_port = htons(UDP_SERVER_PORT);
+            // si_remote.sin_port = htons(UDP_SERVER_PORT);
 
             //now reply the client with the same data
             if(recv_len > 0){
@@ -579,6 +605,133 @@ void *udp_listener(void *vargp){
             }
         }
     }
+
+    if(shutdown(tcp_socket, SHUT_RD)<0) {
+        p_error("tcp shutdown");
+    }
+    if(not_detached) {
+        printf("finished the udp listener\n");
+    }
+
+    return NULL;
+}
+
+struct client_holder {
+    int sock;
+    struct sockaddr_in addr;
+};
+
+void *client_thread(void *vargp) {
+    struct client_holder *client=(struct client_holder*)vargp;
+    char buf[UDP_PACKET_LENGTH_MAX];
+    int len, i;
+    struct timeval tv;
+
+    block_signals();
+
+    tv.tv_sec = RECV_TIMEOUT_SEC;
+    tv.tv_usec = 0;
+    setsockopt(client->sock, SOL_SOCKET, SO_RCVTIMEO,
+            (const char*)&tv, sizeof tv);
+
+    while(!shm->exit_flag) {
+        len = recv(client->sock, buf, UDP_PACKET_LENGTH_MAX-1, 0);
+        if(len<0){
+            if(errno==EAGAIN || errno==EWOULDBLOCK) {
+                continue;
+            }
+            p_error("tcp client recv");
+            break;
+        }else if(len==0){ // zero-length messages are not allowed
+            if(not_detached) printf("connection is closed by client\n");
+            break;
+        }else{
+            if(not_detached){
+                printf("Received TCP packet from %s:%d: ",
+                    inet_ntoa(client->addr.sin_addr),
+                    ntohs(client->addr.sin_port));
+                for(i=0;i<len; ++i) printf("%02x ", buf[i] & 0xff);
+                printf("\n");
+            }
+            buf[len]='\0';
+
+            parseQuery(buf, &len, 1);
+
+            if(not_detached){
+                printf("Replying with packet\n");
+                for(i=0;i<len; ++i) printf("%02x ", buf[i] & 0xff);
+                printf("\n");
+            }
+            // Reply has to be on the server port instead of sender's one.
+            // si_remote.sin_port = htons(UDP_SERVER_PORT);
+
+            //now reply the client with the same data
+            if (send(client->sock, buf, len, 0) == -1){
+                p_error("sendto()");
+            }
+        }
+    }
+    close(client->sock);
+    free(client);
+    if(not_detached) printf("removed client\n");
+
+    return NULL;
+}
+
+int client_init(int client_sock, struct sockaddr_in client_addr) {
+    pthread_t thread;
+    struct client_holder *client=(struct client_holder*)malloc(sizeof(struct client_holder));
+    client->addr = client_addr;
+    client->sock = client_sock;
+    pthread_create(&thread, NULL, client_thread, client);
+    pthread_detach(thread);
+    return 0;
+}
+
+void *tcp_server(void *vargp){
+    struct sockaddr_in sin, client_addr;
+    int client_sock;
+    int optval = 1, len=sizeof(sin);
+
+    block_signals();
+
+    tcp_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if(tcp_socket<0){
+        p_error("socket tcp");
+        exit(1);
+    }
+    bzero((char *)&sin, sizeof(sin));
+    sin.sin_family = AF_INET;
+    sin.sin_addr.s_addr = INADDR_ANY;
+    sin.sin_port = htons(TCP_SERVER_PORT);
+
+    if (setsockopt(tcp_socket, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval))){
+        p_errorce("tcp setsockopt()",tcp_socket);
+    }
+
+    if (bind(tcp_socket, (struct sockaddr *)&sin, len) < 0){
+        p_errorce("bind tcp",tcp_socket);
+    }
+    if (listen(tcp_socket, TCP_LISTEN_CONNECTIONS)<0){
+        p_errorce("tcp listen()",tcp_socket);
+    }
+    if(not_detached) printf("started TCP server\n");
+
+    while(!shm->exit_flag) {
+        int size = sizeof(client_addr);
+        client_sock = accept(tcp_socket, (struct sockaddr *)&client_addr, &size);
+        if(client_sock<0){
+            if(!shm->exit_flag){
+                p_error("tcp accept()");
+            } // else probably the socket was just shut down.
+            break;
+        }else{
+            if(not_detached) printf("got TCP client connection\n");
+            client_init(client_sock, client_addr);
+        }
+    }
+    close(tcp_socket);
+    if(not_detached) printf("closed tcp_socket\n");
 
     return NULL;
 }
@@ -653,6 +806,7 @@ int server(){
 
     root_id = pthread_self();
     pthread_create(&thread_id, NULL, udp_listener, NULL);
+    pthread_create(&tcp_thread_id, NULL, tcp_server, NULL);
 
     while(!shm->exit_flag){
         gettimeofday(&now, NULL);
@@ -739,6 +893,7 @@ int server(){
 
     shmctl(shmid, IPC_RMID, NULL);
     pthread_join(thread_id, NULL);
+    pthread_join(tcp_thread_id, NULL);
 
     return 0;
 }
@@ -936,7 +1091,7 @@ int client(int argc, char** argv){
     }
 
     if(argv[1][0] == 'v') {
-        printf("Version 1.1 (cmake)\n");
+        printf("Version 1.1\n");
         return 0;
     }
 
@@ -992,7 +1147,7 @@ void terminate_daemon(int pid){
         if(errno != ESRCH) p_error("kill");
         return;
     }
-    sleep(1);
+    sleep(RECV_TIMEOUT_SEC*1.2);
     kill(pid, SIGKILL);
 }
 

@@ -6,6 +6,14 @@ BUILD_DIR="$MYPATH/build"
 
 echo " --- STAGE 3 ---"
 
+if [ "$STAGING_DIR" == "" ] || [ ! -d "$STAGING_DIR" ]; then
+	export STAGING_DIR="$STAGING_DIR_C"
+fi
+if [ "$STAGING_DIR" == "" ] || [ ! -d "$STAGING_DIR" ]; then
+	echo STAGING_DIR is not specified>&2
+	exit 1
+fi
+
 cd "$BUILD_DIR"
 
 if ! cmake .. -DCMAKE_TOOLCHAIN_FILE="$DOCKER_PATH/$TOOLCHAIN_CONF"; then
