@@ -56,7 +56,8 @@ def sendall(msg, port):
 # time.sleep(0.1)
 # sock.sendto(b"\x01", ("255.255.255.255", PORT))
 
-myself = b"testb\xED"
+# myself = b"testb\xED"
+myself = b"python"
 omega = b"\x42\xA3\x6B\x00\x87\xDB"
 noexistent = b"n\x0E\x15\x7Ent"
 null_address = b"\x00\x00\x00\x00\x00\x00"

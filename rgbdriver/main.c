@@ -211,55 +211,46 @@ float transition(float t){
 
 int addTimesToResponse(char*resp){
     struct timeval now, t2, t3;
+    double intg, frac;
     int i = 0;
     uint32_t c;
     gettimeofday(&now, NULL);
 
-    if(timercmp(&now, &transit_end, >)){
-        resp[i++] = 0;
-        resp[i++] = 0;
-        resp[i++] = 0;
-        resp[i++] = 0;
-
-        resp[i++] = 0;
-        resp[i++] = 0;
-        resp[i++] = 0;
-        resp[i++] = 0;
-
-        resp[i++] = 0;
-        resp[i++] = 0;
-        resp[i++] = 0;
-        resp[i++] = 0;
-
-        resp[i++] = 0;
-        resp[i++] = 0;
-        resp[i++] = 0;
-        resp[i++] = 0;
-
-        return i;
-    }
-    timersub(&transit_end, &now, &t2);
-    timersub(&transit_end, &transit_start, &t3);
-
-    c = t2.tv_sec;
+    c = now.tv_sec;
     resp[i++] = (c >> 24) & 0xFF;
     resp[i++] = (c >> 16) & 0xFF;
     resp[i++] = (c >> 8)  & 0xFF;
     resp[i++] = c         & 0xFF;
 
-    c = t2.tv_usec;
+    c = now.tv_usec;
     resp[i++] = (c >> 24) & 0xFF;
     resp[i++] = (c >> 16) & 0xFF;
     resp[i++] = (c >> 8)  & 0xFF;
     resp[i++] = c         & 0xFF;
 
-    c = t3.tv_sec;
+    frac = modf(shm->time, &intg);
+
+    c = intg;
     resp[i++] = (c >> 24) & 0xFF;
     resp[i++] = (c >> 16) & 0xFF;
     resp[i++] = (c >> 8)  & 0xFF;
     resp[i++] = c         & 0xFF;
 
-    c = t3.tv_usec;
+    c = (frac*1000000.);
+    resp[i++] = (c >> 24) & 0xFF;
+    resp[i++] = (c >> 16) & 0xFF;
+    resp[i++] = (c >> 8)  & 0xFF;
+    resp[i++] = c         & 0xFF;
+
+    frac = modf(shm->position, &intg);
+
+    c = intg;
+    resp[i++] = (c >> 24) & 0xFF;
+    resp[i++] = (c >> 16) & 0xFF;
+    resp[i++] = (c >> 8)  & 0xFF;
+    resp[i++] = c         & 0xFF;
+
+    c = (frac*1000000.);
     resp[i++] = (c >> 24) & 0xFF;
     resp[i++] = (c >> 16) & 0xFF;
     resp[i++] = (c >> 8)  & 0xFF;
@@ -271,7 +262,7 @@ int addTimesToResponse(char*resp){
 int addStatusToResponse(char *buf){
     uint32_t color;
     int I=0;
-    color = duty_rgbw2color(&c_now);
+    color = duty_rgbw2color(&shm->current_duty);
 
     buf[I++] = (color>>16) & 0xff;
     buf[I++] = (color>>8) & 0xff;
@@ -280,7 +271,12 @@ int addStatusToResponse(char *buf){
     I += addTimesToResponse(buf + I);
 
     buf[I++] = shm->transition & 0xFF;
-    buf[I++] = previous_main_light;
+    buf[I++] = shm->main_light;
+
+    buf[I++] = (shm->r) & 0xff;
+    buf[I++] = (shm->g) & 0xff;
+    buf[I++] = (shm->b) & 0xff;
+
     return I;
 }
 
